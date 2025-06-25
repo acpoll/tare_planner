@@ -243,6 +243,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr local_tsp_path_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr exploration_path_publisher_;
   rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr waypoint_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr goal_point_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr exploration_finish_pub_;
   rclcpp::Publisher<std_msgs::msg::Int32MultiArray>::SharedPtr
       runtime_breakdown_pub_;

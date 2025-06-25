@@ -463,6 +463,8 @@ bool SensorCoveragePlanner3D::initialize() {
       this->create_publisher<nav_msgs::msg::Path>("exploration_path", 1);
   waypoint_pub_ = this->create_publisher<geometry_msgs::msg::PointStamped>(
       pub_waypoint_topic_, 2);
+  goal_point_pub_ = this->create_publisher<geometry_msgs::msg::PointStamped>(
+      "/goal_point", 2);
   exploration_finish_pub_ = this->create_publisher<std_msgs::msg::Bool>(
       pub_exploration_finish_topic_, 2);
   runtime_breakdown_pub_ =
@@ -1363,9 +1365,12 @@ bool SensorCoveragePlanner3D::GetLookAheadPoint(
 void SensorCoveragePlanner3D::PublishWaypoint() {
   geometry_msgs::msg::PointStamped waypoint;
   if (exploration_finished_ && near_home_ && kRushHome) {
+    // When returning home, publish to /goal_point instead of /way_point
     waypoint.point.x = initial_position_.x();
     waypoint.point.y = initial_position_.y();
     waypoint.point.z = initial_position_.z();
+    misc_utils_ns::Publish(shared_from_this(), goal_point_pub_, waypoint,
+                           kWorldFrameID);
   } else {
     double dx = lookahead_point_.x() - robot_position_.x;
     double dy = lookahead_point_.y() - robot_position_.y;
@@ -1380,9 +1385,9 @@ void SensorCoveragePlanner3D::PublishWaypoint() {
     waypoint.point.x = dx + robot_position_.x;
     waypoint.point.y = dy + robot_position_.y;
     waypoint.point.z = lookahead_point_.z();
+    misc_utils_ns::Publish(shared_from_this(), waypoint_pub_, waypoint,
+                           kWorldFrameID);
   }
-  misc_utils_ns::Publish(shared_from_this(), waypoint_pub_, waypoint,
-                         kWorldFrameID);
 }
 
 void SensorCoveragePlanner3D::PublishRuntime() {
