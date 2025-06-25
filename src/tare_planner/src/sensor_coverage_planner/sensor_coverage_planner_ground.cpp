@@ -1369,7 +1369,7 @@ void SensorCoveragePlanner3D::PublishWaypoint() {
     waypoint.point.x = initial_position_.x();
     waypoint.point.y = initial_position_.y();
     waypoint.point.z = initial_position_.z();
-    misc_utils_ns::Publish(shared_from_this(), goal_point_pub_, waypoint,
+    misc_utils_ns::Publish(shared_from_this(), waypoint_pub_, waypoint,
                            kWorldFrameID);
   } else {
     double dx = lookahead_point_.x() - robot_position_.x;
