@@ -19,6 +19,8 @@ tare_planner_node:
     pub_momentum_activation_count_topic_ : momentum_activation_count
 
     kAutoStart : true
+    kUseTimeout: true
+    kExplorationTimeoutSeconds: 600.0
     kRushHome : true
     kUseTerrainHeight : false
     kCheckTerrainCollision : true
