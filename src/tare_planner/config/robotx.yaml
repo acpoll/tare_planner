@@ -27,13 +27,13 @@ tare_planner_node:
     kExtendWayPoint : true
     kUseLineOfSightLookAheadPoint : true
     kNoExplorationReturnHome : true
-    kExtendWayPointDistanceBig : 8.0
-    kExtendWayPointDistanceSmall : 3.5
-    kKeyposeCloudDwzFilterLeafSize : 0.2
+    kExtendWayPointDistanceBig : 4.0
+    kExtendWayPointDistanceSmall : 2.5
+    kKeyposeCloudDwzFilterLeafSize : 0.3
     kRushHomeDist : 5.0
     kAtHomeDistThreshold : 0.5
     kTerrainCollisionThreshold : 0.5
-    kLookAheadDistance : 8.0
+    kLookAheadDistance : 5.0
     kUseMomentum : false 
     kDirectionChangeCounterThr : 6
     kDirectionNoChangeCounterThr : 5
@@ -51,8 +51,8 @@ tare_planner_node:
     rolling_occupancy_grid/resolution_y : 0.3
     rolling_occupancy_grid/resolution_z : 0.3
 
-    kSurfaceCloudDwzLeafSize : 0.3
-    kCollisionCloudDwzLeafSize : 0.2
+    kSurfaceCloudDwzLeafSize : 0.4
+    kCollisionCloudDwzLeafSize : 0.3
     kKeyposeCloudStackNum : 5
     kPointCloudRowNum : 50
     kPointCloudColNum : 50
