@@ -61,6 +61,7 @@ void SensorCoveragePlanner3D::ReadParameters() {
   this->declare_parameter<bool>("kUseLineOfSightLookAheadPoint", true);
   this->declare_parameter<bool>("kNoExplorationReturnHome", true);
   this->declare_parameter<bool>("kUseMomentum", false);
+  this->declare_parameter<bool>("kUseTimeout", true);
 
   // Double
   this->declare_parameter<double>("kKeyposeCloudDwzFilterLeafSize", 0.2);
@@ -70,6 +71,7 @@ void SensorCoveragePlanner3D::ReadParameters() {
   this->declare_parameter<double>("kLookAheadDistance", 5.0);
   this->declare_parameter<double>("kExtendWayPointDistanceBig", 8.0);
   this->declare_parameter<double>("kExtendWayPointDistanceSmall", 3.0);
+  this->declare_parameter<double>("kExplorationTimeoutSeconds", 6000.0);
 
   // Int
   this->declare_parameter<int>("kDirectionChangeCounterThr", 4);
@@ -216,6 +218,10 @@ void SensorCoveragePlanner3D::ReadParameters() {
                       kUseLineOfSightLookAheadPoint);
   this->get_parameter("kNoExplorationReturnHome", kNoExplorationReturnHome);
   this->get_parameter("kUseMomentum", kUseMomentum);
+  this->get_parameter("kUseTimeout", kUseTimeout);
+  // print kUseTimeout to logger
+  RCLCPP_INFO(this->get_logger(), "kUseTimeout: %s",
+              kUseTimeout ? "true" : "false");
 
   this->get_parameter("kKeyposeCloudDwzFilterLeafSize",
                       kKeyposeCloudDwzFilterLeafSize);
@@ -226,6 +232,7 @@ void SensorCoveragePlanner3D::ReadParameters() {
   this->get_parameter("kExtendWayPointDistanceBig", kExtendWayPointDistanceBig);
   this->get_parameter("kExtendWayPointDistanceSmall",
                       kExtendWayPointDistanceSmall);
+  this->get_parameter("kExplorationTimeoutSeconds", kExplorationTimeoutSeconds);
 
   this->get_parameter("kDirectionChangeCounterThr", kDirectionChangeCounterThr);
   this->get_parameter("kDirectionNoChangeCounterThr",
@@ -1467,6 +1474,39 @@ void SensorCoveragePlanner3D::execute() {
     RCLCPP_INFO(this->get_logger(), "Waiting for start signal");
     return;
   }
+
+  // Check for timeout (only if enabled)
+  if (initialized_ && kUseTimeout) {
+    double current_time = this->now().seconds();
+    double elapsed_time = current_time - start_time_;
+    
+    if (elapsed_time > kExplorationTimeoutSeconds) {
+      if (!exploration_finished_) {
+        PrintExplorationStatus("Exploration timeout reached, terminating planner", false);
+        exploration_finished_ = true;
+        stopped_ = true;
+        
+        // Publish final exploration state
+        PublishExplorationState();
+        
+        RCLCPP_WARN(this->get_logger(), 
+                   "TARE planner terminated due to timeout after %.2f seconds", 
+                   elapsed_time);
+        
+        // Set waypoint to current position to stop the robot
+        geometry_msgs::msg::PointStamped waypoint;
+        waypoint.header.frame_id = "map";
+        waypoint.header.stamp = this->now();
+        waypoint.point.x = robot_position_.x;
+        waypoint.point.y = robot_position_.y;
+        waypoint.point.z = robot_position_.z;
+        waypoint_pub_->publish(waypoint);
+        
+        return;
+      }
+    }
+  }
+
   Timer overall_processing_timer("overall processing");
   update_representation_runtime_ = 0;
   local_viewpoint_sampling_runtime_ = 0;

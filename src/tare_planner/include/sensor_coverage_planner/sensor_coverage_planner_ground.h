@@ -101,6 +101,7 @@ private:
   bool kUseLineOfSightLookAheadPoint;
   bool kNoExplorationReturnHome;
   bool kUseMomentum;
+  bool kUseTimeout;
 
   // Double
   double kKeyposeCloudDwzFilterLeafSize;
@@ -110,6 +111,7 @@ private:
   double kLookAheadDistance;
   double kExtendWayPointDistanceBig;
   double kExtendWayPointDistanceSmall;
+  double kExplorationTimeoutSeconds;
 
   // Int
   int kDirectionChangeCounterThr;
