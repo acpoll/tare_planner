@@ -112,6 +112,8 @@ private:
   double kExtendWayPointDistanceBig;
   double kExtendWayPointDistanceSmall;
   double kExplorationTimeoutSeconds;
+  double kWaypointTimeoutSeconds;
+  double kWaypointProgressThreshold;
 
   // Int
   int kDirectionChangeCounterThr;
@@ -212,6 +214,11 @@ private:
   double start_time_;
   double global_direction_switch_time_;
   double reset_waypoint_joystick_axis_value_;
+  double current_waypoint_start_time_;
+  double last_progress_time_;
+  double last_distance_to_waypoint_;
+  Eigen::Vector3d current_waypoint_;
+  bool waypoint_timeout_triggered_;
 
   rclcpp::TimerBase::SharedPtr execution_timer_;
 
@@ -311,6 +318,8 @@ private:
 
   void PrintExplorationStatus(std::string status, bool clear_last_line = true);
   void CountDirectionChange();
+  bool CheckWaypointTimeout();
+  void UpdateWaypointProgress(const Eigen::Vector3d& waypoint);
 };
 
 } // namespace sensor_coverage_planner_3d_ns

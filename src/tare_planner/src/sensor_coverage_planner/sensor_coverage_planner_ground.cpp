@@ -12,6 +12,8 @@
 #include "sensor_coverage_planner/sensor_coverage_planner_ground.h"
 #include "graph/graph.h"
 #include <memory>
+#include <limits>
+#include <cmath>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 
@@ -72,6 +74,8 @@ void SensorCoveragePlanner3D::ReadParameters() {
   this->declare_parameter<double>("kExtendWayPointDistanceBig", 8.0);
   this->declare_parameter<double>("kExtendWayPointDistanceSmall", 3.0);
   this->declare_parameter<double>("kExplorationTimeoutSeconds", 6000.0);
+  this->declare_parameter<double>("kWaypointTimeoutSeconds", 30.0);
+  this->declare_parameter<double>("kWaypointProgressThreshold", 0.5);
 
   // Int
   this->declare_parameter<int>("kDirectionChangeCounterThr", 4);
@@ -233,6 +237,8 @@ void SensorCoveragePlanner3D::ReadParameters() {
   this->get_parameter("kExtendWayPointDistanceSmall",
                       kExtendWayPointDistanceSmall);
   this->get_parameter("kExplorationTimeoutSeconds", kExplorationTimeoutSeconds);
+  this->get_parameter("kWaypointTimeoutSeconds", kWaypointTimeoutSeconds);
+  this->get_parameter("kWaypointProgressThreshold", kWaypointProgressThreshold);
 
   this->get_parameter("kDirectionChangeCounterThr", kDirectionChangeCounterThr);
   this->get_parameter("kDirectionNoChangeCounterThr",
@@ -379,7 +385,10 @@ SensorCoveragePlanner3D::SensorCoveragePlanner3D()
       use_momentum_(false), lookahead_point_in_line_of_sight_(true),
       reset_waypoint_(false), registered_cloud_count_(0), keypose_count_(0),
       direction_change_count_(0), direction_no_change_count_(0),
-      momentum_activation_count_(0), reset_waypoint_joystick_axis_value_(-1.0) {
+      momentum_activation_count_(0), reset_waypoint_joystick_axis_value_(-1.0),
+      current_waypoint_start_time_(0.0), last_progress_time_(0.0),
+      last_distance_to_waypoint_(std::numeric_limits<double>::max()),
+      current_waypoint_(Eigen::Vector3d::Zero()), waypoint_timeout_triggered_(false) {
   std::cout << "finished constructor" << std::endl;
 }
 
@@ -1243,6 +1252,7 @@ bool SensorCoveragePlanner3D::GetLookAheadPoint(
 
   if (reset_waypoint_) {
     reset_waypoint_ = false;
+    waypoint_timeout_triggered_ = false;  // Reset waypoint timeout when waypoint is manually reset
     double lx = 1.0;
     double ly = 0.0;
 
@@ -1343,6 +1353,11 @@ bool SensorCoveragePlanner3D::GetLookAheadPoint(
   lookahead_point_direction_.z() = 0.0;
   lookahead_point_direction_.normalize();
 
+  // Reset waypoint timeout when successfully generating a new lookahead point
+  if ((lookahead_point - current_waypoint_).norm() > 0.1) {
+    waypoint_timeout_triggered_ = false;
+  }
+
   pcl::PointXYZI point;
   point.x = lookahead_point.x();
   point.y = lookahead_point.y();
@@ -1362,25 +1377,51 @@ bool SensorCoveragePlanner3D::GetLookAheadPoint(
 
 void SensorCoveragePlanner3D::PublishWaypoint() {
   geometry_msgs::msg::PointStamped waypoint;
+  
+  // Check for waypoint timeout and handle appropriately
+  bool timeout_occurred = CheckWaypointTimeout();
+  
   if (exploration_finished_ && near_home_ && kRushHome) {
     waypoint.point.x = initial_position_.x();
     waypoint.point.y = initial_position_.y();
     waypoint.point.z = initial_position_.z();
   } else {
-    double dx = lookahead_point_.x() - robot_position_.x;
-    double dy = lookahead_point_.y() - robot_position_.y;
-    double r = sqrt(dx * dx + dy * dy);
-    double extend_dist = lookahead_point_in_line_of_sight_
-                             ? kExtendWayPointDistanceBig
-                             : kExtendWayPointDistanceSmall;
-    if (r < extend_dist && kExtendWayPoint) {
-      dx = dx / r * extend_dist;
-      dy = dy / r * extend_dist;
+    // If waypoint timeout occurred, try to generate a new waypoint in a different direction
+    if (timeout_occurred) {
+      // Generate a waypoint in the opposite direction or perpendicular to current direction
+      double timeout_direction_x = cos(robot_yaw_ + M_PI / 2);  // 90 degrees from current heading
+      double timeout_direction_y = sin(robot_yaw_ + M_PI / 2);
+      double timeout_distance = kExtendWayPointDistanceSmall;
+      
+      waypoint.point.x = robot_position_.x + timeout_direction_x * timeout_distance;
+      waypoint.point.y = robot_position_.y + timeout_direction_y * timeout_distance;
+      waypoint.point.z = robot_position_.z;
+      
+      RCLCPP_INFO(this->get_logger(), 
+                 "Timeout waypoint generated: [%.2f, %.2f, %.2f]", 
+                 waypoint.point.x, waypoint.point.y, waypoint.point.z);
+    } else {
+      // Normal waypoint generation
+      double dx = lookahead_point_.x() - robot_position_.x;
+      double dy = lookahead_point_.y() - robot_position_.y;
+      double r = sqrt(dx * dx + dy * dy);
+      double extend_dist = lookahead_point_in_line_of_sight_
+                               ? kExtendWayPointDistanceBig
+                               : kExtendWayPointDistanceSmall;
+      if (r < extend_dist && kExtendWayPoint) {
+        dx = dx / r * extend_dist;
+        dy = dy / r * extend_dist;
+      }
+      waypoint.point.x = dx + robot_position_.x;
+      waypoint.point.y = dy + robot_position_.y;
+      waypoint.point.z = lookahead_point_.z();
     }
-    waypoint.point.x = dx + robot_position_.x;
-    waypoint.point.y = dy + robot_position_.y;
-    waypoint.point.z = lookahead_point_.z();
   }
+  
+  // Update waypoint progress tracking
+  Eigen::Vector3d waypoint_eigen(waypoint.point.x, waypoint.point.y, waypoint.point.z);
+  UpdateWaypointProgress(waypoint_eigen);
+  
   misc_utils_ns::Publish(shared_from_this(), waypoint_pub_, waypoint,
                          kWorldFrameID);
 }
@@ -1593,6 +1634,14 @@ void SensorCoveragePlanner3D::execute() {
 
     exploration_path_ = ConcatenateGlobalLocalPath(global_path, local_path);
 
+    // Check if waypoint timeout has occurred and handle it
+    if (CheckWaypointTimeout()) {
+      // Force a waypoint reset to help get unstuck
+      reset_waypoint_ = true;
+      RCLCPP_INFO(this->get_logger(), 
+                 "Waypoint timeout triggered - attempting recovery");
+    }
+
     PublishExplorationState();
 
     lookahead_point_update_ =
@@ -1613,4 +1662,60 @@ void SensorCoveragePlanner3D::execute() {
     PublishRuntime();
   }
 }
+
+bool SensorCoveragePlanner3D::CheckWaypointTimeout() {
+  if (!initialized_) {
+    return false;
+  }
+  
+  double current_time = this->now().seconds();
+  Eigen::Vector3d robot_pos(robot_position_.x, robot_position_.y, robot_position_.z);
+  double distance_to_waypoint = (robot_pos - current_waypoint_).norm();
+  
+  // Check if robot has made progress towards waypoint
+  bool made_progress = false;
+  if (distance_to_waypoint < last_distance_to_waypoint_ - kWaypointProgressThreshold) {
+    made_progress = true;
+    last_progress_time_ = current_time;
+    last_distance_to_waypoint_ = distance_to_waypoint;
+  }
+  
+  // Check if waypoint timeout has occurred
+  double time_since_waypoint_start = current_time - current_waypoint_start_time_;
+  double time_since_last_progress = current_time - last_progress_time_;
+  
+  if (time_since_waypoint_start > kWaypointTimeoutSeconds || 
+      time_since_last_progress > kWaypointTimeoutSeconds) {
+    
+    if (!waypoint_timeout_triggered_) {
+      RCLCPP_WARN(this->get_logger(), 
+                 "Waypoint timeout detected: %.2fs since start, %.2fs since progress. Distance: %.2fm", 
+                 time_since_waypoint_start, time_since_last_progress, distance_to_waypoint);
+      PrintExplorationStatus("Waypoint timeout, generating new waypoint", false);
+      waypoint_timeout_triggered_ = true;
+    }
+    return true;
+  }
+  
+  return false;
+}
+
+void SensorCoveragePlanner3D::UpdateWaypointProgress(const Eigen::Vector3d& waypoint) {
+  double current_time = this->now().seconds();
+  
+  // Check if this is a new waypoint
+  if ((waypoint - current_waypoint_).norm() > 0.1) {
+    current_waypoint_ = waypoint;
+    current_waypoint_start_time_ = current_time;
+    last_progress_time_ = current_time;
+    Eigen::Vector3d robot_pos(robot_position_.x, robot_position_.y, robot_position_.z);
+    last_distance_to_waypoint_ = (robot_pos - current_waypoint_).norm();
+    waypoint_timeout_triggered_ = false;
+    
+    RCLCPP_DEBUG(this->get_logger(), 
+                "New waypoint set: [%.2f, %.2f, %.2f], distance: %.2fm", 
+                waypoint.x(), waypoint.y(), waypoint.z(), last_distance_to_waypoint_);
+  }
+}
+
 } // namespace sensor_coverage_planner_3d_ns
