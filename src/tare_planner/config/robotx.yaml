@@ -47,8 +47,8 @@ tare_planner_node:
     kUseCoverageBoundaryOnObjectSurface : false
 
     # Rolling occupancy grid
-    rolling_occupancy_grid/resolution_x : 0.3
-    rolling_occupancy_grid/resolution_y : 0.3
+    rolling_occupancy_grid/resolution_x : 0.25
+    rolling_occupancy_grid/resolution_y : 0.25
     rolling_occupancy_grid/resolution_z : 0.3
 
     kSurfaceCloudDwzLeafSize : 0.4
