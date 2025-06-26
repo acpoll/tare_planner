@@ -48,7 +48,7 @@ void SensorCoveragePlanner3D::ReadParameters() {
   this->declare_parameter<std::string>("pub_runtime_breakdown_topic_",
                                        "runtime_breakdown");
   this->declare_parameter<std::string>("pub_runtime_topic_", "/runtime");
-  this->declare_parameter<std::string>("pub_waypoint_topic_", "/way_point");
+  this->declare_parameter<std::string>("pub_waypoint_topic_", "/way_point_remap");
   this->declare_parameter<std::string>("pub_momentum_activation_count_topic_",
                                        "momentum_activation_count");
 
@@ -244,7 +244,7 @@ void SensorCoveragePlanner3D::ReadParameters() {
   // this->declare_parameter<bool>("use_sim_time", false);
   bool use_sim_time = false;
   this->get_parameter("use_sim_time", use_sim_time);
-  rclcpp::Parameter sim_time_param("use_sim_time", use_sim_time);
+  rclcpp::Parameter sim_time_param("use_sim_time", false);
   this->set_parameter(sim_time_param);
 }
 
@@ -1369,7 +1369,7 @@ void SensorCoveragePlanner3D::PublishWaypoint() {
     waypoint.point.x = initial_position_.x();
     waypoint.point.y = initial_position_.y();
     waypoint.point.z = initial_position_.z();
-    misc_utils_ns::Publish(shared_from_this(), waypoint_pub_, waypoint,
+    misc_utils_ns::Publish(shared_from_this(), goal_point_pub_, waypoint,
                            kWorldFrameID);
   } else {
     double dx = lookahead_point_.x() - robot_position_.x;
@@ -1484,6 +1484,12 @@ void SensorCoveragePlanner3D::execute() {
   if (initialized_ && kUseTimeout) {
     double current_time = this->now().seconds();
     double elapsed_time = current_time - start_time_;
+    // // print start and current time
+    // RCLCPP_INFO(this->get_logger(), "Start time: %.2f, Current time: %.2f", 
+    //             start_time_, current_time);
+    // print the elapsed time
+    RCLCPP_WARN(this->get_logger(), "TARE planner elapsed time: %.2f seconds", elapsed_time);
+    // print (elapsed_time > kExplorationTimeoutSeconds)
     
     if (elapsed_time > kExplorationTimeoutSeconds) {
       if (!exploration_finished_) {
@@ -1581,6 +1587,15 @@ void SensorCoveragePlanner3D::execute() {
 
     double current_time = this->now().seconds();
     double delta_time = current_time - start_time_;
+
+    // bool use_sim_time_test = false;
+    // this->get_parameter("use_sim_time", use_sim_time_test);
+
+    // if (use_sim_time_test) {
+    //   RCLCPP_INFO(this->get_logger(), "Using simulated time");
+    // } else {
+    //   RCLCPP_INFO(this->get_logger(), "Using real time");
+    // }
 
     if (grid_world_->IsReturningHome() &&
         local_coverage_planner_->IsLocalCoverageComplete() &&
